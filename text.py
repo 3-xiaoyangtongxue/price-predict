@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
-from xgboost import XGBRegressor
+from sklearn.ensemble import RandomForestRegressor  # 导入 RandomForestRegressor
 
 # 加载训练集和测试集
 Train_data = pd.read_csv('./used_car_train_20200313.csv', sep=' ')
@@ -49,36 +49,47 @@ TestA_data = pd.get_dummies(TestA_data, columns=columns_to_encode, drop_first=Tr
 TestA_data = TestA_data.reindex(columns=Train_data.columns, fill_value=0)
 
 # 特征和目标变量
-X_train = Train_data.drop(columns=['price', 'SaleID'])
-y_train = Train_data['price']
+X = Train_data.drop(columns=['price', 'SaleID'])
+y = Train_data['price']
 X_test = TestA_data.drop(columns=['price', 'SaleID'], errors='ignore')
 
 # 标准化
 scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
+X_scaled = scaler.fit_transform(X)
 X_test_scaled = scaler.transform(X_test)
 
-# 定义 XGBoost 回归模型
-model = XGBRegressor(
-    n_estimators=200,
-    learning_rate=0.1,
-    max_depth=5,
-    subsample=0.9,
-    colsample_bytree=0.9,
-    random_state=42
+# 划分训练集和验证集
+X_train, X_valid, y_train, y_valid = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+# 定义 RandomForest 回归模型
+model = RandomForestRegressor(
+    n_estimators=200,  # 树的数量
+    max_depth=10,  # 树的最大深度
+    random_state=42,
+    n_jobs=-1  # 使用所有可用的CPU核心
 )
 
 # 使用训练集进行训练
-model.fit(X_train_scaled, y_train)
+model.fit(X_train, y_train)
+
+# 在验证集上进行预测并计算 MAE
+y_valid_pred = model.predict(X_valid)
+mae = mean_absolute_error(y_valid, y_valid_pred)
+print(f"Mean Absolute Error (MAE) on validation set: {mae:.2f}")
 
 # 在测试集上进行预测
 y_pred = model.predict(X_test_scaled)
 
+# 对预测结果进行四舍五入，保留整数
+y_pred_rounded = np.round(y_pred)  # 四舍五入到最接近的整数
+
 # 创建提交的 DataFrame
 submission = pd.DataFrame({
     'SaleID': TestA_data['SaleID'],
-    'price': y_pred
+    'price': y_pred_rounded.astype(int)  # 将结果转换为整数类型
 })
 
 # 保存预测结果为 CSV 文件
 submission.to_csv('submission.csv', index=False)
+
+print("Submission file has been saved as 'submission_with_mae.csv'")
